@@ -1,0 +1,37 @@
+-- Lure them back.
+
+-- You must not change the next 2 lines or the table definition.
+SET SEARCH_PATH TO uber, public;
+DROP TABLE IF EXISTS q2 CASCADE;
+
+CREATE TABLE q2(
+    client_id INTEGER,
+    name VARCHAR(41),
+  	email VARCHAR(30),
+  	billed FLOAT,
+  	decline INTEGER
+);
+
+-- Do this for each of the views that define your intermediate steps.  
+-- (But give them better names!) The IF EXISTS avoids generating an error 
+-- the first time this file is imported.
+DROP VIEW IF EXISTS intermediate_step CASCADE;
+
+DROP VIEW IF EXISTS customer_analysis;
+
+-- Define views for your intermediate steps here:
+
+create  view customer_analysis as 
+select r.client_id,count(r.*) filter ( where extract(year from r.datetime::date)::integer=2020 ) as count_20,
+count(r.*) filter ( where extract(year from r.datetime::date)=2020 ) as count_21,
+ sum(b.amount) filter ( where extract(year from r.datetime::date)::integer<2020 ) as bill
+ from request r join billed b on r.request_id=b.request_id
+ group by client_id;
+
+-- Your query that answers the question goes below the "insert into" line:
+
+INSERT INTO q2
+select c.client_id,c.firstname,c.email,r.bill as billed,(count_20-count_21) as difference from client c
+ join customer_analysis
+ r on c.client_id=r.client_id 
+where r.count_20>1 and r.count_20<=10 and r.count_21<r.count_20 and r.bill>500

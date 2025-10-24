@@ -1,0 +1,28 @@
+-- Months.
+
+-- You must not change the next 2 lines or the table definition.
+SET SEARCH_PATH TO uber, public;
+DROP TABLE IF EXISTS q1 CASCADE;
+
+CREATE TABLE q1(
+    client_id INTEGER,
+    email VARCHAR(30),
+    months INTEGER
+);
+
+-- Do this for each of the views that define your intermediate steps.  
+-- (But give them better names!) The IF EXISTS avoids generating an error 
+-- the first time this file is imported.
+DROP VIEW IF EXISTS intermediate_step CASCADE;
+
+
+-- Define views for your intermediate steps here:
+
+
+-- Your query that answers the question goes below the "insert into" line:
+
+INSERT INTO q1
+select c.client_id,c.email,count(distinct r.datetime::date) from client c 
+left join request r on c.client_id=r.client_id left join dropoff d on
+r.request_id=d.request_id
+group by c.client_id,email;

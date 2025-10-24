@@ -1,0 +1,61 @@
+-- Do drivers improve?
+
+-- You must not change the next 2 lines or the table definition.
+SET SEARCH_PATH TO uber, public;
+DROP TABLE IF EXISTS q4 CASCADE;
+
+CREATE TABLE q4(
+    type VARCHAR(9),
+    number INTEGER,
+    early FLOAT,
+    late FLOAT
+);
+
+-- Do this for each of the views that define your intermediate steps.  
+-- (But give them better names!) The IF EXISTS avoids generating an error 
+-- the first time this file is imported.
+DROP VIEW IF EXISTS intermediate_step CASCADE;
+
+DROP VIEW IF EXISTS rating_analysis;
+
+-- Define views for your intermediate steps here:
+
+
+create view rating_analysis as
+SELECT DISTINCT t1.driver_id
+FROM   ( select dr.driver_id,min(p.datetime::date) as start from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date  where d.datetime is not null 
+and dr.driver_id in (select dr.driver_id from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date  where d.datetime is not null 
+group by dr.driver_id having count(*)>=10) group by dr.driver_id ) t1
+JOIN   (select dr.driver_id,p.datetime::date  from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date  where d.datetime is not null ) t2 on t1.driver_id=t2.driver_id
+WHERE  t2.datetime BETWEEN t1.start + 1
+                        AND t1.start + 4
+GROUP  BY t1.driver_id
+HAVING count(*) = 4;
+
+
+-- Your query that answers the question goes below the "insert into" line:
+
+
+
+INSERT INTO q4
+select
+CASE
+    WHEN trained = 'true' THEN 'trained'
+    ELSE 'untrained' end
+as type,count(distinct a.driver_id)
+,avg(rating) filter ( where rank>=1 and rank<=5) as early,avg(rating) filter ( where rank>=5 and rank<=10) as late from (
+select dr.*,dd.rating,rank() over (partition by dr.driver_id order by p.datetime::date) from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date left join driverrating dd on d.request_id=dd.request_id where d.datetime is not null) a
+where driver_id in (select * from rating_analysis)
+group by trained;

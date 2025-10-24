@@ -1,0 +1,52 @@
+-- Bigger and smaller spenders.
+
+-- You must not change the next 2 lines or the table definition.
+SET SEARCH_PATH TO uber, public;
+DROP TABLE IF EXISTS q5 CASCADE;
+
+CREATE TABLE q5(
+    client_id INTEGER,
+    month VARCHAR(7),
+    total FLOAT,
+    comparison VARCHAR(30)
+);
+
+-- Do this for each of the views that define your intermediate steps.  
+-- (But give them better names!) The IF EXISTS avoids generating an error 
+-- the first time this file is imported.
+
+DROP VIEW IF EXISTS intermediate_step CASCADE;
+
+DROP VIEW IF EXISTS bill_analysis;
+
+-- Define views for your intermediate steps here:
+
+create view bill_analysis as
+select sum(amount),client_id,to_char(p.datetime::date,'YYYY MM') as month
+ from request r join
+  pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date 
+join billed b
+on r.request_id=b.request_id
+ where d.datetime is not null 
+ group by client_id,month;
+
+
+-- Your query that answers the question goes below the "insert into" line:
+
+INSERT INTO q5
+select ba.client_id,ba.month,ba.sum::double precision as total,
+CASE
+    WHEN ba.sum< month_total THEN 'below'
+    when ba.sum>= month_total then 'at or above' end
+as conparisom
+from (
+select sum(amount)/count(distinct r.client_id) as month_total ,to_char(p.datetime::date,'YYYY MM') as month
+ from request r join
+  pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date 
+join billed b
+on r.request_id=b.request_id 
+ where d.datetime is not null
+ group by month) a join bill_analysis ba on a.month=ba.month
+;

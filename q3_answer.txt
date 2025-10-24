@@ -1,0 +1,53 @@
+-- Rest bylaw.
+
+-- You must not change the next 2 lines or the table definition.
+SET SEARCH_PATH TO uber, public;
+DROP TABLE IF EXISTS q3 CASCADE;
+
+CREATE TABLE q3(
+    driver_id INTEGER,
+    start DATE,
+    driving INTERVAL,
+    breaks INTERVAL
+);
+
+-- Do this for each of the views that define your intermediate steps.  
+-- (But give them better names!) The IF EXISTS avoids generating an error 
+-- the first time this file is imported.
+DROP VIEW IF EXISTS intermediate_step CASCADE;
+
+DROP VIEW IF EXISTS driver_analysis;
+
+-- Define views for your intermediate steps here:
+
+create view driver_analysis as 
+select driver_id,sum(driving) as driving,datetime,sum(breaks) as breaks from (select s.driver_id,s.driving,s.datetime::date,
+SUM(CASE WHEN c.breaks is not null THEN c.breaks ELSE ((s.drop_time::date + interval '1' day)::timestamp without time zone-s.drop_time) END) as breaks
+from (select dr.driver_id,sum(d.datetime-p.datetime)  as driving,p.datetime,d.datetime as drop_time from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join pickup p on r.request_id=p.request_id  join
+dropoff d on p.request_id=d.request_id and p.datetime::date=d.datetime::date  where d.datetime is not null 
+group by dr.driver_id,p.datetime,drop_time) s
+join (
+select a.driver_id,sum(a.datetime-b.datetime)  as breaks,a.datetime  from (
+select p.*,dr.driver_id,rank() over (partition by dr.driver_id,p.datetime::date order by p.datetime) from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join pickup p on r.request_id=p.request_id) a 
+left join 
+ (
+select p.*,dr.driver_id,rank() over (partition by dr.driver_id,p.datetime::date order by p.datetime) from driver dr join clockedin c on dr.driver_id=c.driver_id
+join dispatch f on f.shift_id=c.shift_id join request r on f.request_id=r.request_id
+join dropoff p on r.request_id=p.request_id where p.datetime is not null) b on a.datetime::date=b.datetime::date and a.rank=b.rank+1 and a.driver_id=b.driver_id 
+group by a.driver_id,a.datetime)c on s.driver_id=c.driver_id and s.datetime=c.datetime
+group by s.DROP_TIME,s.driver_id,s.driving,s.datetime::date) l
+group by driver_id,datetime;
+
+-- Your query that answers the question goes below the "insert into" line:
+
+INSERT INTO q3
+select c.driver_id,c.datetime as start,c.driving,c.breaks from driver_analysis a join driver_analysis b 
+on a.datetime + interval '1' day=b.datetime  and a.driver_id=b.driver_id join driver_analysis c
+on b.datetime + interval '1' day=c.datetime  and b.driver_id=c.driver_id
+where a.driving>='12:00:00'::interval and a.breaks<'00:15:00'::interval and 
+b.driving>='12:00:00'::interval and b.breaks<'00:15:00'::interval and
+c.driving>='12:00:00'::interval and c.breaks<'00:15:00'::interval;
